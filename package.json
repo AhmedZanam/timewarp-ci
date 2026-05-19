@@ -1,0 +1,36 @@
+{
+  "name": "timewarp-ci",
+  "version": "0.0.1",
+  "description": "Run test commands across time-related scenarios to catch date and timezone bugs before production.",
+  "type": "module",
+  "bin": {
+    "timewarp-ci": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cli",
+    "timezone",
+    "testing",
+    "ci"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
