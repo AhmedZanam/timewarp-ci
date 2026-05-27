@@ -7,6 +7,8 @@
     "timewarp-ci": "./dist/cli.js"
   },
   "files": [
+    "assets",
+    "docs",
     "dist",
     "README.md",
     "LICENSE"
@@ -14,6 +16,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -29,8 +32,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "eslint": "^10.4.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
+    "typescript-eslint": "^8.60.0",
     "vitest": "^2.0.0"
   }
 }
