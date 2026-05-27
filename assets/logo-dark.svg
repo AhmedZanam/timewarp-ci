@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220" role="img" aria-labelledby="title desc">
+  <title id="title">timewarp-ci dark logo</title>
+  <desc id="desc">A clock inside a warp ring with a checkmark and the text timewarp-ci for dark backgrounds.</desc>
+  <defs>
+    <linearGradient id="ring" x1="58" y1="42" x2="284" y2="176" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="0.5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#38bdf8" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <rect width="360" height="220" rx="28" fill="#0b1020"/>
+  <g filter="url(#glow)">
+    <path d="M48 117c16-48 76-78 143-67 67 12 115 61 106 109-8 48-70 76-137 64" fill="none" stroke="url(#ring)" stroke-width="14" stroke-linecap="round" transform="rotate(-16 174 136)"/>
+    <path d="M260 60l31 17-28 21 5-20z" fill="#a78bfa"/>
+    <circle cx="146" cy="114" r="62" fill="#111827" stroke="#e5f2ff" stroke-width="8"/>
+    <circle cx="146" cy="114" r="7" fill="#e5f2ff"/>
+    <path d="M146 76v38l28 20" fill="none" stroke="#e5f2ff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M115 121l20 20 42-48" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="180" y="196" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="32" font-weight="800" fill="#f8fafc">timewarp-ci</text>
+</svg>

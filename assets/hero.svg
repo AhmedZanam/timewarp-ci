@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="480" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">timewarp-ci timezone matrix demo</title>
+  <desc id="desc">A terminal panel showing UTC passes, New York fails, Berlin passes, and Tokyo passes beside a clock warp visual.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.48" stop-color="#eef8ff"/>
+      <stop offset="1" stop-color="#f7f3ff"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="98" y1="70" x2="850" y2="410" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16a34a"/>
+      <stop offset="0.5" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-15%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#0f172a" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="960" height="480" rx="34" fill="url(#bg)"/>
+  <path d="M93 245c51-126 229-192 420-157 192 35 332 158 313 281-18 119-177 161-302 125" fill="none" stroke="url(#accent)" stroke-width="22" stroke-linecap="round" opacity="0.42" transform="rotate(-9 470 286)"/>
+  <g transform="translate(643 72)">
+    <circle cx="110" cy="102" r="70" fill="#ffffff" stroke="#0f172a" stroke-width="9"/>
+    <circle cx="110" cy="102" r="7" fill="#0f172a"/>
+    <path d="M110 58v44l33 22" fill="none" stroke="#0f172a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M78 111l22 22 47-55" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M194 28l42 22-38 29 7-27z" fill="#7c3aed"/>
+  </g>
+  <g filter="url(#shadow)" transform="translate(96 94)">
+    <rect width="590" height="312" rx="18" fill="#0b1020"/>
+    <rect width="590" height="42" rx="18" fill="#151b2f"/>
+    <circle cx="28" cy="21" r="6" fill="#ef4444"/>
+    <circle cx="48" cy="21" r="6" fill="#f59e0b"/>
+    <circle cx="68" cy="21" r="6" fill="#22c55e"/>
+    <text x="94" y="27" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#94a3b8">timewarp-ci</text>
+    <text x="32" y="82" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" fill="#e2e8f0">$ timewarp-ci run -- npm test</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22">
+      <text x="34" y="137" fill="#22c55e">✓</text>
+      <text x="70" y="137" fill="#e2e8f0">Etc/UTC</text>
+      <text x="380" y="137" fill="#22c55e">passed</text>
+      <text x="34" y="181" fill="#ef4444">✗</text>
+      <text x="70" y="181" fill="#e2e8f0">America/New_York</text>
+      <text x="380" y="181" fill="#ef4444">failed</text>
+      <text x="34" y="225" fill="#22c55e">✓</text>
+      <text x="70" y="225" fill="#e2e8f0">Europe/Berlin</text>
+      <text x="380" y="225" fill="#22c55e">passed</text>
+      <text x="34" y="269" fill="#22c55e">✓</text>
+      <text x="70" y="269" fill="#e2e8f0">Asia/Tokyo</text>
+      <text x="380" y="269" fill="#22c55e">passed</text>
+    </g>
+  </g>
+</svg>
