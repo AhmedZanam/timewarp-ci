@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="360" viewBox="0 0 860 360" role="img" aria-labelledby="title desc">
+  <title id="title">timewarp-ci terminal demo</title>
+  <desc id="desc">Example terminal output for a timezone matrix run.</desc>
+  <rect width="860" height="360" rx="20" fill="#0b1020"/>
+  <rect width="860" height="46" rx="20" fill="#151b2f"/>
+  <circle cx="30" cy="23" r="7" fill="#ef4444"/>
+  <circle cx="54" cy="23" r="7" fill="#f59e0b"/>
+  <circle cx="78" cy="23" r="7" fill="#22c55e"/>
+  <text x="108" y="29" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#94a3b8">terminal</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="24">
+    <text x="34" y="88" fill="#e2e8f0">$ timewarp-ci run -- npm test</text>
+    <text x="34" y="145" fill="#22c55e">✓</text>
+    <text x="74" y="145" fill="#e2e8f0">Etc/UTC             passed</text>
+    <text x="34" y="185" fill="#22c55e">✓</text>
+    <text x="74" y="185" fill="#e2e8f0">Europe/Berlin       passed</text>
+    <text x="34" y="225" fill="#ef4444">✗</text>
+    <text x="74" y="225" fill="#e2e8f0">America/New_York    failed</text>
+    <text x="34" y="265" fill="#22c55e">✓</text>
+    <text x="74" y="265" fill="#e2e8f0">Asia/Tokyo          passed</text>
+    <text x="34" y="323" fill="#facc15">Likely issue:</text>
+    <text x="226" y="323" fill="#e2e8f0">Date-only string parsed as local time.</text>
+  </g>
+</svg>
