@@ -30,9 +30,7 @@ a customer in New York, a deploy near month-end, or code that quietly treats a
 date-only string as local time.
 
 timewarp-ci is an open-source TypeScript CLI for finding those failures earlier.
-The current `v0.0.1` release is the project seed: it provides the package
-structure and `--help` / `--version` CLI behavior. The first useful runner,
-planned for `v0.1.0`, will run your test command across a timezone matrix by
+The current `v0.1.0` scope runs your test command across a timezone matrix by
 setting `TZ` environment variables. It does not claim to globally change system
 time.
 
@@ -44,6 +42,7 @@ Current local development commands:
 npm install
 npm run dev -- --help
 npm run dev -- --version
+npm run dev -- run -- npm test
 ```
 
 After building, you can run the compiled CLI directly:
@@ -58,11 +57,11 @@ published.
 
 ## Demo Output
 
-The timezone matrix command below is planned for `v0.1.0`; it is not implemented
-in `v0.0.1`.
+The timezone matrix runner uses `TZ` environment variables for each child
+process.
 
 <p align="center">
-  <img src="./assets/terminal-demo.svg" alt="planned timewarp-ci terminal output" width="720" />
+  <img src="./assets/terminal-demo.svg" alt="timewarp-ci terminal output" width="720" />
 </p>
 
 ```txt
@@ -92,13 +91,13 @@ telemetry. The project starts small so every release can be useful and honest.
 | Available in `v0.0.1` | TypeScript CLI package seed |
 | Available in `v0.0.1` | `timewarp-ci --help` |
 | Available in `v0.0.1` | `timewarp-ci --version` |
-| Planned for `v0.1.0` | Run a test command across a timezone matrix using `TZ` |
+| Available in `v0.1.0` | Run a test command across a timezone matrix using `TZ` |
 | Planned | Config files, reports, diagnostics, static date-risk scanning, fixed-date mode, and ecosystem adapters |
 
 ## GitHub Actions
 
-GitHub Actions support is planned for `v0.3.0`. Until the runner exists, this is
-the intended shape rather than a working example:
+GitHub Actions support is planned for `v0.3.0`. The runner can still be used in
+a standard Node workflow once the package is published:
 
 ```yaml
 name: timewarp-ci
@@ -150,8 +149,10 @@ Usage:
 Options:
   --help       Show this help message.
   --version    Show the installed version.
+  run -- <command>
 
-Timezone matrix running is planned for v0.1.0.
+Examples:
+  timewarp-ci run -- npm test
 ```
 
 </details>
@@ -160,7 +161,7 @@ Timezone matrix running is planned for v0.1.0.
 
 | Ecosystem | Status | Notes |
 | --- | --- | --- |
-| JavaScript / TypeScript / Node | Seeded | First target ecosystem |
+| JavaScript / TypeScript / Node | Initial runner | First target ecosystem |
 | GitHub Actions | Planned | Dedicated support planned for `v0.3.0` |
 | Playwright | Planned | Adapter planned after fixed-date mode |
 | Python / pytest | Planned | Beta later in the roadmap |
@@ -179,9 +180,7 @@ Near-term milestones:
 
 ## Limitations
 
-- `v0.0.1` only supports `--help`, `--version`, and no-argument help output.
-- The planned `v0.1.0` runner will use timezone matrix testing through `TZ`
-  environment variables.
+- `v0.1.0` uses timezone matrix testing through `TZ` environment variables.
 - timewarp-ci does not globally change system time.
 - Fixed-date mode is not implemented yet; it is on the roadmap.
 - No telemetry is included.
