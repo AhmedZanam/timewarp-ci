@@ -16,7 +16,7 @@ type CliResult = {
 type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
-  | { kind: "run"; command: string; args: string[] }
+  | { kind: "run"; command: string; args: string[]; timezones: string[] }
   | { kind: "error"; message: string };
 
 export type CommandRunResult = {
@@ -46,14 +46,16 @@ export function getHelpText(): string {
     "Usage:",
     "  timewarp-ci [--help]",
     "  timewarp-ci --version",
-    "  timewarp-ci run -- <command>",
+    "  timewarp-ci run [--timezone <tz>] -- <command>",
     "",
     "Options:",
-    "  --help       Show this help message.",
-    "  --version    Show the installed version.",
+    "  --help             Show this help message.",
+    "  --version          Show the installed version.",
+    "  -t, --timezone     Add a timezone to the run matrix.",
     "",
     "Examples:",
-    "  timewarp-ci run -- npm test"
+    "  timewarp-ci run -- npm test",
+    "  timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test"
   ].join("\n");
 }
 
@@ -71,19 +73,52 @@ export function parseCliArgs(args: string[]): ParsedCommand {
   }
 
   if (args[0] === "run") {
-    if (args[1] !== "--" || args.length < 3) {
+    const timezones: string[] = [];
+    let commandStartIndex = -1;
+
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index];
+
+      if (arg === "--") {
+        commandStartIndex = index + 1;
+        break;
+      }
+
+      if (arg === "--timezone" || arg === "-t") {
+        const timezone = args[index + 1];
+
+        if (!timezone || timezone === "--") {
+          return {
+            kind: "error",
+            message: `Missing value for ${arg}`
+          };
+        }
+
+        timezones.push(timezone);
+        index += 1;
+        continue;
+      }
+
+      return {
+        kind: "error",
+        message: `Unknown run option: ${arg}`
+      };
+    }
+
+    if (commandStartIndex === -1 || commandStartIndex >= args.length) {
       return {
         kind: "error",
         message: "Missing command. Use: timewarp-ci run -- <command>"
       };
     }
 
-    const [command, ...commandArgs] = args.slice(2);
+    const [command, ...commandArgs] = args.slice(commandStartIndex);
 
     return {
       kind: "run",
       command,
-      args: commandArgs
+      args: commandArgs,
+      timezones: timezones.length > 0 ? timezones : defaultTimezones
     };
   }
 
@@ -139,7 +174,7 @@ export function formatMatrixResults(results: CommandRunResult[]): string {
 
   return results
     .map((result) => {
-      const icon = result.exitCode === 0 ? "✓" : "✗";
+      const icon = result.exitCode === 0 ? "PASS" : "FAIL";
       const status = result.exitCode === 0 ? "passed" : "failed";
       return `${icon} ${result.timezone.padEnd(longestTimezone)}  ${status}`;
     })
@@ -180,7 +215,7 @@ export async function runCli(
   const results = await runTimezoneMatrix(
     parsed.command,
     parsed.args,
-    defaultTimezones,
+    parsed.timezones,
     commandRunner
   );
   const hasFailure = results.some((result) => result.exitCode !== 0);
