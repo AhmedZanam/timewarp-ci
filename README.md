@@ -30,9 +30,9 @@ a customer in New York, a deploy near month-end, or code that quietly treats a
 date-only string as local time.
 
 timewarp-ci is an open-source TypeScript CLI for finding those failures earlier.
-The current `v0.1.0` scope runs your test command across a timezone matrix by
-setting `TZ` environment variables. It does not claim to globally change system
-time.
+The current `v0.2.0` scope runs your test command across a timezone matrix by
+setting `TZ` environment variables, with optional JSON config and report output.
+It does not claim to globally change system time.
 
 ## Quick Start
 
@@ -43,6 +43,7 @@ npm install
 npm run dev -- --help
 npm run dev -- --version
 npm run dev -- run -- npm test
+npm run dev -- run -t Etc/UTC -t Europe/Berlin -- npm test
 ```
 
 After building, you can run the compiled CLI directly:
@@ -67,13 +68,10 @@ process.
 ```txt
 timewarp-ci run -- npm test
 
-✓ Etc/UTC             passed
-✓ Europe/Berlin       passed
-✗ America/New_York    failed
-✓ Asia/Tokyo          passed
-
-Likely issue:
-Date-only string parsed as local time.
+PASS Etc/UTC           passed
+FAIL America/New_York  failed
+PASS Europe/Berlin     passed
+PASS Asia/Tokyo        passed
 ```
 
 ## Why This Exists
@@ -92,7 +90,8 @@ telemetry. The project starts small so every release can be useful and honest.
 | Available in `v0.0.1` | `timewarp-ci --help` |
 | Available in `v0.0.1` | `timewarp-ci --version` |
 | Available in `v0.1.0` | Run a test command across a timezone matrix using `TZ` |
-| Planned | Config files, reports, diagnostics, static date-risk scanning, fixed-date mode, and ecosystem adapters |
+| Available in `v0.2.0` | JSON config files and JSON report output |
+| Planned | Diagnostics, static date-risk scanning, fixed-date mode, and ecosystem adapters |
 
 ## GitHub Actions
 
@@ -121,8 +120,7 @@ jobs:
 
 ## Configuration
 
-Configuration is planned for `v0.2.0`. The expected direction is a small config
-file that keeps commands explicit:
+Create `timewarp-ci.config.json` for repeated local and CI usage:
 
 ```json
 {
@@ -136,6 +134,48 @@ file that keeps commands explicit:
 }
 ```
 
+Then run:
+
+```sh
+timewarp-ci run
+```
+
+You can also pass a custom config path:
+
+```sh
+timewarp-ci run --config ./timewarp-ci.config.json
+```
+
+Explicit CLI timezones override config timezones:
+
+```sh
+timewarp-ci run --config ./timewarp-ci.config.json -t Etc/UTC -- npm test
+```
+
+## Reports
+
+Text output is the default. Use JSON output for machine-readable CI logs:
+
+```sh
+timewarp-ci run --report json -- npm test
+```
+
+Example JSON report:
+
+```json
+{
+  "command": "npm test",
+  "results": [
+    {
+      "timezone": "Etc/UTC",
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 1200
+    }
+  ]
+}
+```
+
 <details>
 <summary>Current CLI help</summary>
 
@@ -145,14 +185,20 @@ timewarp-ci
 Usage:
   timewarp-ci [--help]
   timewarp-ci --version
+  timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>
+  timewarp-ci run [--config <path>]
 
 Options:
-  --help       Show this help message.
-  --version    Show the installed version.
-  run -- <command>
+  --help             Show this help message.
+  --version          Show the installed version.
+  -c, --config       Use a config file.
+  --report           Output format: text or json.
+  -t, --timezone     Add a timezone to the run matrix.
 
 Examples:
   timewarp-ci run -- npm test
+  timewarp-ci run --config timewarp-ci.config.json
+  timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test
 ```
 
 </details>
@@ -181,6 +227,8 @@ Near-term milestones:
 ## Limitations
 
 - `v0.1.0` uses timezone matrix testing through `TZ` environment variables.
+- Some platforms, runtimes, or tools may ignore `TZ`; verify behavior for the
+  test runner you use.
 - timewarp-ci does not globally change system time.
 - Fixed-date mode is not implemented yet; it is on the roadmap.
 - No telemetry is included.

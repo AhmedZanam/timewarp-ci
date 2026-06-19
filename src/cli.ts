@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type PackageJson = {
@@ -16,19 +18,36 @@ type CliResult = {
 type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
-  | { kind: "run"; command: string; args: string[]; timezones: string[] }
+  | {
+      kind: "run";
+      command?: string;
+      args: string[];
+      timezones?: string[];
+      configPath?: string;
+      reportFormat: ReportFormat;
+    }
   | { kind: "error"; message: string };
 
 export type CommandRunResult = {
   timezone: string;
   exitCode: number;
+  durationMs?: number;
 };
+
+export type TimewarpConfig = {
+  command?: string;
+  timezones?: string[];
+};
+
+type ReportFormat = "text" | "json";
 
 type CommandRunner = (
   command: string,
   args: string[],
   timezone: string
 ) => Promise<CommandRunResult>;
+
+type ConfigLoader = (configPath?: string) => Promise<TimewarpConfig | null>;
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as PackageJson;
@@ -46,15 +65,19 @@ export function getHelpText(): string {
     "Usage:",
     "  timewarp-ci [--help]",
     "  timewarp-ci --version",
-    "  timewarp-ci run [--timezone <tz>] -- <command>",
+    "  timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>",
+    "  timewarp-ci run [--config <path>]",
     "",
     "Options:",
     "  --help             Show this help message.",
     "  --version          Show the installed version.",
+    "  -c, --config       Use a config file.",
+    "  --report           Output format: text or json.",
     "  -t, --timezone     Add a timezone to the run matrix.",
     "",
     "Examples:",
     "  timewarp-ci run -- npm test",
+    "  timewarp-ci run --config timewarp-ci.config.json",
     "  timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test"
   ].join("\n");
 }
@@ -74,6 +97,8 @@ export function parseCliArgs(args: string[]): ParsedCommand {
 
   if (args[0] === "run") {
     const timezones: string[] = [];
+    let configPath: string | undefined;
+    let reportFormat: ReportFormat = "text";
     let commandStartIndex = -1;
 
     for (let index = 1; index < args.length; index += 1) {
@@ -99,16 +124,64 @@ export function parseCliArgs(args: string[]): ParsedCommand {
         continue;
       }
 
+      if (arg === "--config" || arg === "-c") {
+        const nextConfigPath = args[index + 1];
+
+        if (!nextConfigPath || nextConfigPath === "--") {
+          return {
+            kind: "error",
+            message: `Missing value for ${arg}`
+          };
+        }
+
+        configPath = nextConfigPath;
+        index += 1;
+        continue;
+      }
+
+      if (arg === "--report") {
+        const nextReportFormat = args[index + 1];
+
+        if (!nextReportFormat || nextReportFormat === "--") {
+          return {
+            kind: "error",
+            message: "Missing value for --report"
+          };
+        }
+
+        if (nextReportFormat !== "text" && nextReportFormat !== "json") {
+          return {
+            kind: "error",
+            message: "Report format must be text or json."
+          };
+        }
+
+        reportFormat = nextReportFormat;
+        index += 1;
+        continue;
+      }
+
       return {
         kind: "error",
         message: `Unknown run option: ${arg}`
       };
     }
 
-    if (commandStartIndex === -1 || commandStartIndex >= args.length) {
+    if (commandStartIndex === -1) {
+      return {
+        kind: "run",
+        args: [],
+        timezones: timezones.length > 0 ? timezones : undefined,
+        configPath,
+        reportFormat
+      };
+    }
+
+    if (commandStartIndex >= args.length) {
       return {
         kind: "error",
-        message: "Missing command. Use: timewarp-ci run -- <command>"
+        message:
+          "Missing command. Use: timewarp-ci run -- <command> or add timewarp-ci.config.json"
       };
     }
 
@@ -118,7 +191,9 @@ export function parseCliArgs(args: string[]): ParsedCommand {
       kind: "run",
       command,
       args: commandArgs,
-      timezones: timezones.length > 0 ? timezones : defaultTimezones
+      timezones: timezones.length > 0 ? timezones : undefined,
+      configPath,
+      reportFormat
     };
   }
 
@@ -126,6 +201,82 @@ export function parseCliArgs(args: string[]): ParsedCommand {
     kind: "error",
     message: `Unknown option: ${args[0]}`
   };
+}
+
+export function parseCommandString(commandText: string): {
+  command: string;
+  args: string[];
+} {
+  const parts = commandText.trim().split(/\s+/).filter(Boolean);
+  const [command, ...args] = parts;
+
+  if (!command) {
+    throw new Error("Config command must not be empty.");
+  }
+
+  return { command, args };
+}
+
+export function parseConfigJson(contents: string): TimewarpConfig {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(contents);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not parse config JSON: ${message}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Config must be a JSON object.");
+  }
+
+  const config = parsed as Record<string, unknown>;
+  const result: TimewarpConfig = {};
+
+  if ("command" in config) {
+    if (typeof config.command !== "string") {
+      throw new Error("Config command must be a string.");
+    }
+
+    result.command = config.command;
+  }
+
+  if ("timezones" in config) {
+    if (
+      !Array.isArray(config.timezones) ||
+      config.timezones.some((timezone) => typeof timezone !== "string")
+    ) {
+      throw new Error("Config timezones must be an array of strings.");
+    }
+
+    result.timezones = config.timezones;
+  }
+
+  return result;
+}
+
+export async function loadConfig(
+  configPath = "timewarp-ci.config.json"
+): Promise<TimewarpConfig | null> {
+  const resolvedConfigPath = isAbsolute(configPath)
+    ? configPath
+    : resolve(process.cwd(), configPath);
+
+  try {
+    return parseConfigJson(await readFile(resolvedConfigPath, "utf8"));
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export function runCommand(
@@ -161,10 +312,35 @@ export async function runTimezoneMatrix(
   const results: CommandRunResult[] = [];
 
   for (const timezone of timezones) {
-    results.push(await commandRunner(command, args, timezone));
+    const startedAt = Date.now();
+    const result = await commandRunner(command, args, timezone);
+    results.push({
+      ...result,
+      durationMs: result.durationMs ?? Date.now() - startedAt
+    });
   }
 
   return results;
+}
+
+export function formatJsonReport(
+  command: string,
+  args: string[],
+  results: CommandRunResult[]
+): string {
+  return JSON.stringify(
+    {
+      command: [command, ...args].join(" "),
+      results: results.map((result) => ({
+        timezone: result.timezone,
+        status: result.exitCode === 0 ? "passed" : "failed",
+        exitCode: result.exitCode,
+        durationMs: result.durationMs ?? 0
+      }))
+    },
+    null,
+    2
+  );
 }
 
 export function formatMatrixResults(results: CommandRunResult[]): string {
@@ -184,7 +360,8 @@ export function formatMatrixResults(results: CommandRunResult[]): string {
 export async function runCli(
   args: string[],
   version = packageJson.version,
-  commandRunner: CommandRunner = runCommand
+  commandRunner: CommandRunner = runCommand,
+  configLoader: ConfigLoader = loadConfig
 ): Promise<CliResult> {
   const parsed = parseCliArgs(args);
 
@@ -212,16 +389,57 @@ export async function runCli(
     };
   }
 
+  let config: TimewarpConfig | null = null;
+
+  try {
+    config =
+      parsed.configPath || !parsed.command
+        ? await configLoader(parsed.configPath)
+        : null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      stdout: "",
+      stderr: `${message}\n`,
+      exitCode: 1
+    };
+  }
+
+  const commandText = parsed.command ?? config?.command;
+
+  if (!commandText) {
+    return {
+      stdout: "",
+      stderr:
+        "Missing command. Use: timewarp-ci run -- <command> or add timewarp-ci.config.json\n",
+      exitCode: 1
+    };
+  }
+
+  let command = parsed.command;
+  let commandArgs = parsed.args;
+
+  if (!command) {
+    const parsedCommand = parseCommandString(commandText);
+    command = parsedCommand.command;
+    commandArgs = parsedCommand.args;
+  }
+
+  const timezones = parsed.timezones ?? config?.timezones ?? defaultTimezones;
   const results = await runTimezoneMatrix(
-    parsed.command,
-    parsed.args,
-    parsed.timezones,
+    command,
+    commandArgs,
+    timezones,
     commandRunner
   );
   const hasFailure = results.some((result) => result.exitCode !== 0);
 
   return {
-    stdout: `${formatMatrixResults(results)}\n`,
+    stdout:
+      parsed.reportFormat === "json"
+        ? `${formatJsonReport(command, commandArgs, results)}\n`
+        : `${formatMatrixResults(results)}\n`,
     stderr: "",
     exitCode: hasFailure ? 1 : 0
   };
