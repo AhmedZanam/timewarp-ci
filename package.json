@@ -1,6 +1,6 @@
 {
   "name": "timewarp-ci",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run test commands across time-related scenarios to catch date and timezone bugs before production.",
   "type": "module",
   "bin": {

@@ -39,7 +39,7 @@ export type TimewarpConfig = {
   timezones?: string[];
 };
 
-type ReportFormat = "text" | "json";
+type ReportFormat = "text" | "json" | "github";
 
 type CommandRunner = (
   command: string,
@@ -72,7 +72,7 @@ export function getHelpText(): string {
     "  --help             Show this help message.",
     "  --version          Show the installed version.",
     "  -c, --config       Use a config file.",
-    "  --report           Output format: text or json.",
+    "  --report           Output format: text, json, or github.",
     "  -t, --timezone     Add a timezone to the run matrix.",
     "",
     "Examples:",
@@ -149,10 +149,14 @@ export function parseCliArgs(args: string[]): ParsedCommand {
           };
         }
 
-        if (nextReportFormat !== "text" && nextReportFormat !== "json") {
+        if (
+          nextReportFormat !== "text" &&
+          nextReportFormat !== "json" &&
+          nextReportFormat !== "github"
+        ) {
           return {
             kind: "error",
-            message: "Report format must be text or json."
+            message: "Report format must be text, json, or github."
           };
         }
 
@@ -343,6 +347,35 @@ export function formatJsonReport(
   );
 }
 
+function escapeGitHubCommandData(value: string): string {
+  return value
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
+function escapeGitHubCommandProperty(value: string): string {
+  return escapeGitHubCommandData(value)
+    .replace(/:/g, "%3A")
+    .replace(/,/g, "%2C");
+}
+
+export function formatGitHubReport(results: CommandRunResult[]): string {
+  const annotations = results
+    .filter((result) => result.exitCode !== 0)
+    .map((result) => {
+      const title = escapeGitHubCommandProperty(
+        `timewarp-ci ${result.timezone} failed`
+      );
+      const message = escapeGitHubCommandData(
+        `Timezone ${result.timezone} failed with exit code ${result.exitCode}.`
+      );
+      return `::error title=${title}::${message}`;
+    });
+
+  return [...annotations, formatMatrixResults(results)].join("\n");
+}
+
 export function formatMatrixResults(results: CommandRunResult[]): string {
   const longestTimezone = Math.max(
     ...results.map((result) => result.timezone.length)
@@ -436,13 +469,32 @@ export async function runCli(
   const hasFailure = results.some((result) => result.exitCode !== 0);
 
   return {
-    stdout:
-      parsed.reportFormat === "json"
-        ? `${formatJsonReport(command, commandArgs, results)}\n`
-        : `${formatMatrixResults(results)}\n`,
+    stdout: `${formatReport(
+      parsed.reportFormat,
+      command,
+      commandArgs,
+      results
+    )}\n`,
     stderr: "",
     exitCode: hasFailure ? 1 : 0
   };
+}
+
+function formatReport(
+  reportFormat: ReportFormat,
+  command: string,
+  args: string[],
+  results: CommandRunResult[]
+): string {
+  if (reportFormat === "json") {
+    return formatJsonReport(command, args, results);
+  }
+
+  if (reportFormat === "github") {
+    return formatGitHubReport(results);
+  }
+
+  return formatMatrixResults(results);
 }
 
 export async function main(argv = process.argv): Promise<void> {
