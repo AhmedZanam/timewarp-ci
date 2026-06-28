@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatJsonReport,
+  formatGitHubReport,
   formatMatrixResults,
   getHelpText,
   getVersionText,
@@ -23,6 +24,7 @@ describe("cli", () => {
     expect(result.stdout).toContain(
       "timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>"
     );
+    expect(result.stdout).toContain("Output format: text, json, or github.");
   });
 
   it("prints help for --help", async () => {
@@ -105,6 +107,18 @@ describe("cli", () => {
       });
   });
 
+  it("parses run commands with GitHub reports", () => {
+    expect(parseCliArgs(["run", "--report", "github", "--", "npm", "test"]))
+      .toEqual({
+        kind: "run",
+        command: "npm",
+        args: ["test"],
+        timezones: undefined,
+        configPath: undefined,
+        reportFormat: "github"
+      });
+  });
+
   it("reports missing config values", async () => {
     const result = await runCli(["run", "--config", "--", "npm", "test"]);
 
@@ -130,7 +144,9 @@ describe("cli", () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Report format must be text or json.");
+    expect(result.stderr).toContain(
+      "Report format must be text, json, or github."
+    );
   });
 
   it("reports missing timezone values", async () => {
@@ -245,6 +261,25 @@ describe("cli", () => {
     });
   });
 
+  it("formats GitHub reports with failure annotations", () => {
+    expect(
+      formatGitHubReport([
+        { timezone: "Etc/UTC", exitCode: 0 },
+        { timezone: "America/New_York", exitCode: 1 }
+      ])
+    ).toBe(
+      "::error title=timewarp-ci America/New_York failed::Timezone America/New_York failed with exit code 1.\nPASS Etc/UTC           passed\nFAIL America/New_York  failed"
+    );
+  });
+
+  it("escapes GitHub report annotation values", () => {
+    expect(
+      formatGitHubReport([{ timezone: "Test:Zone,Percent%", exitCode: 2 }])
+    ).toBe(
+      "::error title=timewarp-ci Test%3AZone%2CPercent%25 failed::Timezone Test:Zone,Percent%25 failed with exit code 2.\nFAIL Test:Zone,Percent%  failed"
+    );
+  });
+
   it("returns a failing CLI exit code when any timezone fails", async () => {
     const result = await runCli(
       ["run", "--", "npm", "test"],
@@ -298,6 +333,24 @@ describe("cli", () => {
         }
       ]
     });
+  });
+
+  it("prints GitHub reports", async () => {
+    const result = await runCli(
+      ["run", "--report", "github", "-t", "Etc/UTC", "--", "npm", "test"],
+      "0.0.1-test",
+      async (_command, _args, timezone) => ({
+        timezone,
+        exitCode: 1,
+        durationMs: 7
+      })
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain(
+      "::error title=timewarp-ci Etc/UTC failed::Timezone Etc/UTC failed with exit code 1."
+    );
+    expect(result.stdout).toContain("FAIL Etc/UTC  failed");
   });
 
   it("runs commands from config", async () => {
