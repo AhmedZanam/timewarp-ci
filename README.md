@@ -30,8 +30,10 @@ a customer in New York, a deploy near month-end, or code that quietly treats a
 date-only string as local time.
 
 timewarp-ci is an open-source TypeScript CLI for finding those failures earlier.
-The current `v0.2.0` scope runs your test command across a timezone matrix by
-setting `TZ` environment variables, with optional JSON config and report output.
+The current `v0.4.0` scope runs your test command across a timezone matrix by
+setting `TZ` environment variables, with optional JSON config, JSON reports, and
+GitHub Actions annotations. It also includes a local diagnostics command for
+checking timezone runtime behavior.
 It does not claim to globally change system time.
 
 ## Quick Start
@@ -42,6 +44,7 @@ Current local development commands:
 npm install
 npm run dev -- --help
 npm run dev -- --version
+npm run dev -- doctor
 npm run dev -- run -- npm test
 npm run dev -- run -t Etc/UTC -t Europe/Berlin -- npm test
 ```
@@ -91,12 +94,14 @@ telemetry. The project starts small so every release can be useful and honest.
 | Available in `v0.0.1` | `timewarp-ci --version` |
 | Available in `v0.1.0` | Run a test command across a timezone matrix using `TZ` |
 | Available in `v0.2.0` | JSON config files and JSON report output |
-| Planned | Diagnostics, static date-risk scanning, fixed-date mode, and ecosystem adapters |
+| Available in `v0.3.0` | GitHub Actions annotation output |
+| Available in `v0.4.0` | Local timezone diagnostics |
+| Planned | Static date-risk scanning, fixed-date mode, and ecosystem adapters |
 
 ## GitHub Actions
 
-GitHub Actions support is planned for `v0.3.0`. The runner can still be used in
-a standard Node workflow once the package is published:
+The runner can be used in a standard Node workflow once the package is
+published:
 
 ```yaml
 name: timewarp-ci
@@ -115,7 +120,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: npx timewarp-ci run -- npm test
+      - run: npx timewarp-ci run --report github -- npm test
 ```
 
 ## Configuration
@@ -152,12 +157,32 @@ Explicit CLI timezones override config timezones:
 timewarp-ci run --config ./timewarp-ci.config.json -t Etc/UTC -- npm test
 ```
 
+## Diagnostics
+
+Use `doctor` to print local runtime details that affect timezone testing:
+
+```sh
+timewarp-ci doctor
+timewarp-ci doctor --json
+```
+
+Diagnostics report the Node version, platform, current `TZ` environment value,
+Intl-resolved timezone, default timezone support, and warnings.
+
+This command does not make network calls and does not change system time.
+
 ## Reports
 
 Text output is the default. Use JSON output for machine-readable CI logs:
 
 ```sh
 timewarp-ci run --report json -- npm test
+```
+
+Use GitHub output for workflow annotations on failed timezones:
+
+```sh
+timewarp-ci run --report github -- npm test
 ```
 
 Example JSON report:
@@ -185,17 +210,21 @@ timewarp-ci
 Usage:
   timewarp-ci [--help]
   timewarp-ci --version
+  timewarp-ci doctor [--json]
   timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>
   timewarp-ci run [--config <path>]
 
 Options:
   --help             Show this help message.
   --version          Show the installed version.
+  doctor            Print local timezone diagnostics.
+  --json            Print doctor output as JSON.
   -c, --config       Use a config file.
-  --report           Output format: text or json.
+  --report           Output format: text, json, or github.
   -t, --timezone     Add a timezone to the run matrix.
 
 Examples:
+  timewarp-ci doctor
   timewarp-ci run -- npm test
   timewarp-ci run --config timewarp-ci.config.json
   timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test
@@ -208,7 +237,7 @@ Examples:
 | Ecosystem | Status | Notes |
 | --- | --- | --- |
 | JavaScript / TypeScript / Node | Initial runner | First target ecosystem |
-| GitHub Actions | Planned | Dedicated support planned for `v0.3.0` |
+| GitHub Actions | Initial support | Use `--report github` for failure annotations |
 | Playwright | Planned | Adapter planned after fixed-date mode |
 | Python / pytest | Planned | Beta later in the roadmap |
 | JVM / Go | Planned | Beta later in the roadmap |
@@ -222,7 +251,8 @@ Near-term milestones:
 - `v0.0.1`: project seed
 - `v0.1.0`: timezone matrix runner
 - `v0.2.0`: config and reports
-- `v0.3.0`: GitHub Action support
+- `v0.3.0`: GitHub Actions annotation output
+- `v0.4.0`: diagnostics
 
 ## Limitations
 

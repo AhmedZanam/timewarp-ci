@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectDiagnostics,
+  formatDiagnosticsJson,
+  formatDiagnosticsText,
+  formatGitHubReport,
   formatJsonReport,
   formatMatrixResults,
   getHelpText,
   getVersionText,
+  isTimeZoneSupported,
   parseCommandString,
   parseCliArgs,
   parseConfigJson,
@@ -20,9 +25,11 @@ describe("cli", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("Usage:");
     expect(result.stdout).toContain("timewarp-ci --version");
+    expect(result.stdout).toContain("timewarp-ci doctor [--json]");
     expect(result.stdout).toContain(
       "timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>"
     );
+    expect(result.stdout).toContain("Output format: text, json, or github.");
   });
 
   it("prints help for --help", async () => {
@@ -105,6 +112,36 @@ describe("cli", () => {
       });
   });
 
+  it("parses doctor commands", () => {
+    expect(parseCliArgs(["doctor"])).toEqual({
+      kind: "doctor",
+      reportFormat: "text"
+    });
+    expect(parseCliArgs(["doctor", "--json"])).toEqual({
+      kind: "doctor",
+      reportFormat: "json"
+    });
+  });
+
+  it("reports unknown doctor options", async () => {
+    const result = await runCli(["doctor", "--bad"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unknown doctor option: --bad");
+  });
+
+  it("parses run commands with GitHub reports", () => {
+    expect(parseCliArgs(["run", "--report", "github", "--", "npm", "test"]))
+      .toEqual({
+        kind: "run",
+        command: "npm",
+        args: ["test"],
+        timezones: undefined,
+        configPath: undefined,
+        reportFormat: "github"
+      });
+  });
+
   it("reports missing config values", async () => {
     const result = await runCli(["run", "--config", "--", "npm", "test"]);
 
@@ -130,7 +167,9 @@ describe("cli", () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Report format must be text or json.");
+    expect(result.stderr).toContain(
+      "Report format must be text, json, or github."
+    );
   });
 
   it("reports missing timezone values", async () => {
@@ -245,6 +284,81 @@ describe("cli", () => {
     });
   });
 
+  it("detects supported timezones", () => {
+    expect(isTimeZoneSupported("Etc/UTC")).toBe(true);
+    expect(isTimeZoneSupported("Not/A_Timezone")).toBe(false);
+  });
+
+  it("collects diagnostics", () => {
+    const diagnostics = collectDiagnostics({ TZ: "Etc/UTC" });
+
+    expect(diagnostics.nodeVersion).toBe(process.version);
+    expect(diagnostics.platform).toBe(process.platform);
+    expect(diagnostics.arch).toBe(process.arch);
+    expect(diagnostics.tzEnv).toBe("Etc/UTC");
+    expect(diagnostics.defaultTimezones).toContainEqual({
+      timezone: "Etc/UTC",
+      supported: true
+    });
+  });
+
+  it("formats diagnostics text", () => {
+    expect(
+      formatDiagnosticsText({
+        nodeVersion: "v20.0.0",
+        platform: "linux",
+        arch: "x64",
+        tzEnv: null,
+        resolvedTimeZone: "UTC",
+        defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+        warnings: ["TZ is not set in the current environment."]
+      })
+    ).toContain("TZ env: (not set)");
+  });
+
+  it("formats diagnostics JSON", () => {
+    expect(
+      JSON.parse(
+        formatDiagnosticsJson({
+          nodeVersion: "v20.0.0",
+          platform: "linux",
+          arch: "x64",
+          tzEnv: "Etc/UTC",
+          resolvedTimeZone: "UTC",
+          defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+          warnings: []
+        })
+      )
+    ).toEqual({
+      nodeVersion: "v20.0.0",
+      platform: "linux",
+      arch: "x64",
+      tzEnv: "Etc/UTC",
+      resolvedTimeZone: "UTC",
+      defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+      warnings: []
+    });
+  });
+
+  it("formats GitHub reports with failure annotations", () => {
+    expect(
+      formatGitHubReport([
+        { timezone: "Etc/UTC", exitCode: 0 },
+        { timezone: "America/New_York", exitCode: 1 }
+      ])
+    ).toBe(
+      "::error title=timewarp-ci America/New_York failed::Timezone America/New_York failed with exit code 1.\nPASS Etc/UTC           passed\nFAIL America/New_York  failed"
+    );
+  });
+
+  it("escapes GitHub report annotation values", () => {
+    expect(
+      formatGitHubReport([{ timezone: "Test:Zone,Percent%", exitCode: 2 }])
+    ).toBe(
+      "::error title=timewarp-ci Test%3AZone%2CPercent%25 failed::Timezone Test:Zone,Percent%25 failed with exit code 2.\nFAIL Test:Zone,Percent%  failed"
+    );
+  });
+
   it("returns a failing CLI exit code when any timezone fails", async () => {
     const result = await runCli(
       ["run", "--", "npm", "test"],
@@ -298,6 +412,50 @@ describe("cli", () => {
         }
       ]
     });
+  });
+
+  it("prints doctor diagnostics", async () => {
+    const result = await runCli(["doctor"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("timewarp-ci diagnostics");
+    expect(result.stdout).toContain(`Node: ${process.version}`);
+  });
+
+  it("prints doctor diagnostics as JSON", async () => {
+    const result = await runCli(["doctor", "--json"]);
+    const diagnostics = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(diagnostics.nodeVersion).toBe(process.version);
+    expect(diagnostics.defaultTimezones).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          timezone: "Etc/UTC",
+          supported: true
+        })
+      ])
+    );
+  });
+
+  it("prints GitHub reports", async () => {
+    const result = await runCli(
+      ["run", "--report", "github", "-t", "Etc/UTC", "--", "npm", "test"],
+      "0.0.1-test",
+      async (_command, _args, timezone) => ({
+        timezone,
+        exitCode: 1,
+        durationMs: 7
+      })
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain(
+      "::error title=timewarp-ci Etc/UTC failed::Timezone Etc/UTC failed with exit code 1."
+    );
+    expect(result.stdout).toContain("FAIL Etc/UTC  failed");
   });
 
   it("runs commands from config", async () => {

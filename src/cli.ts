@@ -18,6 +18,7 @@ type CliResult = {
 type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
+  | { kind: "doctor"; reportFormat: DoctorReportFormat }
   | {
       kind: "run";
       command?: string;
@@ -39,7 +40,21 @@ export type TimewarpConfig = {
   timezones?: string[];
 };
 
-type ReportFormat = "text" | "json";
+type ReportFormat = "text" | "json" | "github";
+type DoctorReportFormat = "text" | "json";
+
+export type Diagnostics = {
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+  tzEnv: string | null;
+  resolvedTimeZone: string | null;
+  defaultTimezones: Array<{
+    timezone: string;
+    supported: boolean;
+  }>;
+  warnings: string[];
+};
 
 type CommandRunner = (
   command: string,
@@ -65,17 +80,21 @@ export function getHelpText(): string {
     "Usage:",
     "  timewarp-ci [--help]",
     "  timewarp-ci --version",
+    "  timewarp-ci doctor [--json]",
     "  timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>",
     "  timewarp-ci run [--config <path>]",
     "",
     "Options:",
     "  --help             Show this help message.",
     "  --version          Show the installed version.",
+    "  doctor            Print local timezone diagnostics.",
+    "  --json            Print doctor output as JSON.",
     "  -c, --config       Use a config file.",
-    "  --report           Output format: text or json.",
+    "  --report           Output format: text, json, or github.",
     "  -t, --timezone     Add a timezone to the run matrix.",
     "",
     "Examples:",
+    "  timewarp-ci doctor",
     "  timewarp-ci run -- npm test",
     "  timewarp-ci run --config timewarp-ci.config.json",
     "  timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test"
@@ -93,6 +112,26 @@ export function parseCliArgs(args: string[]): ParsedCommand {
 
   if (args.includes("--version") || args.includes("-v")) {
     return { kind: "version" };
+  }
+
+  if (args[0] === "doctor") {
+    let reportFormat: DoctorReportFormat = "text";
+
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index];
+
+      if (arg === "--json") {
+        reportFormat = "json";
+        continue;
+      }
+
+      return {
+        kind: "error",
+        message: `Unknown doctor option: ${arg}`
+      };
+    }
+
+    return { kind: "doctor", reportFormat };
   }
 
   if (args[0] === "run") {
@@ -149,10 +188,14 @@ export function parseCliArgs(args: string[]): ParsedCommand {
           };
         }
 
-        if (nextReportFormat !== "text" && nextReportFormat !== "json") {
+        if (
+          nextReportFormat !== "text" &&
+          nextReportFormat !== "json" &&
+          nextReportFormat !== "github"
+        ) {
           return {
             kind: "error",
-            message: "Report format must be text or json."
+            message: "Report format must be text, json, or github."
           };
         }
 
@@ -323,6 +366,83 @@ export async function runTimezoneMatrix(
   return results;
 }
 
+export function isTimeZoneSupported(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(
+      new Date("2020-01-01T00:00:00Z")
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function collectDiagnostics(
+  env: NodeJS.ProcessEnv = process.env
+): Diagnostics {
+  const resolvedTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+  const checkedTimezones = defaultTimezones.map((timezone) => ({
+    timezone,
+    supported: isTimeZoneSupported(timezone)
+  }));
+  const warnings: string[] = [];
+
+  if (!env.TZ) {
+    warnings.push("TZ is not set in the current environment.");
+  }
+
+  const unsupportedTimezones = checkedTimezones
+    .filter((result) => !result.supported)
+    .map((result) => result.timezone);
+
+  if (unsupportedTimezones.length > 0) {
+    warnings.push(
+      `Intl does not support default timezone(s): ${unsupportedTimezones.join(
+        ", "
+      )}.`
+    );
+  }
+
+  return {
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    tzEnv: env.TZ ?? null,
+    resolvedTimeZone,
+    defaultTimezones: checkedTimezones,
+    warnings
+  };
+}
+
+export function formatDiagnosticsText(diagnostics: Diagnostics): string {
+  const lines = [
+    "timewarp-ci diagnostics",
+    "",
+    `Node: ${diagnostics.nodeVersion}`,
+    `Platform: ${diagnostics.platform}/${diagnostics.arch}`,
+    `TZ env: ${diagnostics.tzEnv ?? "(not set)"}`,
+    `Intl timezone: ${diagnostics.resolvedTimeZone ?? "(unknown)"}`,
+    "",
+    "Default timezone support:",
+    ...diagnostics.defaultTimezones.map((result) => {
+      const status = result.supported ? "supported" : "unsupported";
+      return `  ${result.timezone}: ${status}`;
+    })
+  ];
+
+  if (diagnostics.warnings.length > 0) {
+    lines.push("", "Warnings:");
+    lines.push(...diagnostics.warnings.map((warning) => `  ${warning}`));
+  }
+
+  return lines.join("\n");
+}
+
+export function formatDiagnosticsJson(diagnostics: Diagnostics): string {
+  return JSON.stringify(diagnostics, null, 2);
+}
+
 export function formatJsonReport(
   command: string,
   args: string[],
@@ -341,6 +461,35 @@ export function formatJsonReport(
     null,
     2
   );
+}
+
+function escapeGitHubCommandData(value: string): string {
+  return value
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
+function escapeGitHubCommandProperty(value: string): string {
+  return escapeGitHubCommandData(value)
+    .replace(/:/g, "%3A")
+    .replace(/,/g, "%2C");
+}
+
+export function formatGitHubReport(results: CommandRunResult[]): string {
+  const annotations = results
+    .filter((result) => result.exitCode !== 0)
+    .map((result) => {
+      const title = escapeGitHubCommandProperty(
+        `timewarp-ci ${result.timezone} failed`
+      );
+      const message = escapeGitHubCommandData(
+        `Timezone ${result.timezone} failed with exit code ${result.exitCode}.`
+      );
+      return `::error title=${title}::${message}`;
+    });
+
+  return [...annotations, formatMatrixResults(results)].join("\n");
 }
 
 export function formatMatrixResults(results: CommandRunResult[]): string {
@@ -376,6 +525,19 @@ export async function runCli(
   if (parsed.kind === "version") {
     return {
       stdout: `${getVersionText(version)}\n`,
+      stderr: "",
+      exitCode: 0
+    };
+  }
+
+  if (parsed.kind === "doctor") {
+    const diagnostics = collectDiagnostics();
+
+    return {
+      stdout:
+        parsed.reportFormat === "json"
+          ? `${formatDiagnosticsJson(diagnostics)}\n`
+          : `${formatDiagnosticsText(diagnostics)}\n`,
       stderr: "",
       exitCode: 0
     };
@@ -436,13 +598,32 @@ export async function runCli(
   const hasFailure = results.some((result) => result.exitCode !== 0);
 
   return {
-    stdout:
-      parsed.reportFormat === "json"
-        ? `${formatJsonReport(command, commandArgs, results)}\n`
-        : `${formatMatrixResults(results)}\n`,
+    stdout: `${formatReport(
+      parsed.reportFormat,
+      command,
+      commandArgs,
+      results
+    )}\n`,
     stderr: "",
     exitCode: hasFailure ? 1 : 0
   };
+}
+
+function formatReport(
+  reportFormat: ReportFormat,
+  command: string,
+  args: string[],
+  results: CommandRunResult[]
+): string {
+  if (reportFormat === "json") {
+    return formatJsonReport(command, args, results);
+  }
+
+  if (reportFormat === "github") {
+    return formatGitHubReport(results);
+  }
+
+  return formatMatrixResults(results);
 }
 
 export async function main(argv = process.argv): Promise<void> {
