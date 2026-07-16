@@ -5,6 +5,7 @@ import {
   formatDiagnosticsText,
   formatGitHubReport,
   formatJsonReport,
+  formatGitHubReport,
   formatMatrixResults,
   getHelpText,
   getVersionText,
