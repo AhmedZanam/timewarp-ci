@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatJsonReport,
+  collectDiagnostics,
+  formatDiagnosticsJson,
+  formatDiagnosticsText,
   formatGitHubReport,
+  formatJsonReport,
   formatMatrixResults,
   getHelpText,
   getVersionText,
+  isTimeZoneSupported,
   parseCommandString,
   parseCliArgs,
   parseConfigJson,
@@ -21,6 +25,7 @@ describe("cli", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("Usage:");
     expect(result.stdout).toContain("timewarp-ci --version");
+    expect(result.stdout).toContain("timewarp-ci doctor [--json]");
     expect(result.stdout).toContain(
       "timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>"
     );
@@ -105,6 +110,24 @@ describe("cli", () => {
         configPath: undefined,
         reportFormat: "json"
       });
+  });
+
+  it("parses doctor commands", () => {
+    expect(parseCliArgs(["doctor"])).toEqual({
+      kind: "doctor",
+      reportFormat: "text"
+    });
+    expect(parseCliArgs(["doctor", "--json"])).toEqual({
+      kind: "doctor",
+      reportFormat: "json"
+    });
+  });
+
+  it("reports unknown doctor options", async () => {
+    const result = await runCli(["doctor", "--bad"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unknown doctor option: --bad");
   });
 
   it("parses run commands with GitHub reports", () => {
@@ -261,6 +284,62 @@ describe("cli", () => {
     });
   });
 
+  it("detects supported timezones", () => {
+    expect(isTimeZoneSupported("Etc/UTC")).toBe(true);
+    expect(isTimeZoneSupported("Not/A_Timezone")).toBe(false);
+  });
+
+  it("collects diagnostics", () => {
+    const diagnostics = collectDiagnostics({ TZ: "Etc/UTC" });
+
+    expect(diagnostics.nodeVersion).toBe(process.version);
+    expect(diagnostics.platform).toBe(process.platform);
+    expect(diagnostics.arch).toBe(process.arch);
+    expect(diagnostics.tzEnv).toBe("Etc/UTC");
+    expect(diagnostics.defaultTimezones).toContainEqual({
+      timezone: "Etc/UTC",
+      supported: true
+    });
+  });
+
+  it("formats diagnostics text", () => {
+    expect(
+      formatDiagnosticsText({
+        nodeVersion: "v20.0.0",
+        platform: "linux",
+        arch: "x64",
+        tzEnv: null,
+        resolvedTimeZone: "UTC",
+        defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+        warnings: ["TZ is not set in the current environment."]
+      })
+    ).toContain("TZ env: (not set)");
+  });
+
+  it("formats diagnostics JSON", () => {
+    expect(
+      JSON.parse(
+        formatDiagnosticsJson({
+          nodeVersion: "v20.0.0",
+          platform: "linux",
+          arch: "x64",
+          tzEnv: "Etc/UTC",
+          resolvedTimeZone: "UTC",
+          defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+          warnings: []
+        })
+      )
+    ).toEqual({
+      nodeVersion: "v20.0.0",
+      platform: "linux",
+      arch: "x64",
+      tzEnv: "Etc/UTC",
+      resolvedTimeZone: "UTC",
+      defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
+      warnings: []
+    });
+  });
+
   it("formats GitHub reports with failure annotations", () => {
     expect(
       formatGitHubReport([
@@ -333,6 +412,32 @@ describe("cli", () => {
         }
       ]
     });
+  });
+
+  it("prints doctor diagnostics", async () => {
+    const result = await runCli(["doctor"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("timewarp-ci diagnostics");
+    expect(result.stdout).toContain(`Node: ${process.version}`);
+  });
+
+  it("prints doctor diagnostics as JSON", async () => {
+    const result = await runCli(["doctor", "--json"]);
+    const diagnostics = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(diagnostics.nodeVersion).toBe(process.version);
+    expect(diagnostics.defaultTimezones).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          timezone: "Etc/UTC",
+          supported: true
+        })
+      ])
+    );
   });
 
   it("prints GitHub reports", async () => {
