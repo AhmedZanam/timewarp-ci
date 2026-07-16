@@ -16,6 +16,11 @@ import {
   runCommand,
   runTimezoneMatrix
 } from "../src/cli.js";
+import {
+  formatScanJson,
+  formatScanText,
+  scanSource
+} from "../src/scanner.js";
 
 describe("cli", () => {
   it("prints help with no args", async () => {
@@ -26,6 +31,7 @@ describe("cli", () => {
     expect(result.stdout).toContain("Usage:");
     expect(result.stdout).toContain("timewarp-ci --version");
     expect(result.stdout).toContain("timewarp-ci doctor [--json]");
+    expect(result.stdout).toContain("timewarp-ci scan [path] [--json]");
     expect(result.stdout).toContain(
       "timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>"
     );
@@ -120,6 +126,30 @@ describe("cli", () => {
     expect(parseCliArgs(["doctor", "--json"])).toEqual({
       kind: "doctor",
       reportFormat: "json"
+    });
+  });
+
+  it("parses scan commands", () => {
+    expect(parseCliArgs(["scan"])).toEqual({
+      kind: "scan",
+      path: ".",
+      reportFormat: "text"
+    });
+    expect(parseCliArgs(["scan", "src", "--json"])).toEqual({
+      kind: "scan",
+      path: "src",
+      reportFormat: "json"
+    });
+  });
+
+  it("reports invalid scan arguments", async () => {
+    await expect(runCli(["scan", "--bad"])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("Unknown scan option: --bad")
+    });
+    await expect(runCli(["scan", "src", "test"])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("Scan accepts at most one path.")
     });
   });
 
@@ -338,6 +368,61 @@ describe("cli", () => {
       defaultTimezones: [{ timezone: "Etc/UTC", supported: true }],
       warnings: []
     });
+  });
+
+  it("finds date risks with stable locations", () => {
+    expect(
+      scanSource(
+        [
+          "const now = Date.now();",
+          "const parsed = new Date('2026-07-16');",
+          "const hour = parsed.getHours();"
+        ].join("\n"),
+        "src/example.ts"
+      )
+    ).toEqual([
+      expect.objectContaining({
+        file: "src/example.ts",
+        line: 1,
+        column: 13,
+        rule: "system-clock"
+      }),
+      expect.objectContaining({
+        line: 2,
+        column: 16,
+        rule: "date-string"
+      }),
+      expect.objectContaining({ line: 3, column: 20, rule: "local-time" })
+    ]);
+  });
+
+  it("formats scan reports", () => {
+    const findings = scanSource("new Date()", "clock.ts");
+
+    expect(formatScanText(findings)).toContain("1 date risk found.");
+    expect(JSON.parse(formatScanJson(findings))).toEqual({ findings });
+    expect(formatScanText([])).toBe("No date risks found.");
+  });
+
+  it("scans supported source files through the CLI", async () => {
+    const result = await runCli(["scan", "src/cli.ts", "--json"]);
+    const report = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ file: "src/cli.ts", rule: "system-clock" })
+      ])
+    );
+  });
+
+  it("reports scan filesystem errors", async () => {
+    const result = await runCli(["scan", "missing-source-directory"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Could not scan missing-source-directory:");
   });
 
   it("formats GitHub reports with failure annotations", () => {

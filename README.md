@@ -30,10 +30,10 @@ a customer in New York, a deploy near month-end, or code that quietly treats a
 date-only string as local time.
 
 timewarp-ci is an open-source TypeScript CLI for finding those failures earlier.
-The current `v0.4.0` scope runs your test command across a timezone matrix by
+The current `v0.5.0` scope runs your test command across a timezone matrix by
 setting `TZ` environment variables, with optional JSON config, JSON reports, and
 GitHub Actions annotations. It also includes a local diagnostics command for
-checking timezone runtime behavior.
+checking timezone runtime behavior and a dependency-free JS/TS date-risk scan.
 It does not claim to globally change system time.
 
 ## Quick Start
@@ -45,6 +45,7 @@ npm install
 npm run dev -- --help
 npm run dev -- --version
 npm run dev -- doctor
+npm run dev -- scan src
 npm run dev -- run -- npm test
 npm run dev -- run -t Etc/UTC -t Europe/Berlin -- npm test
 ```
@@ -96,7 +97,23 @@ telemetry. The project starts small so every release can be useful and honest.
 | Available in `v0.2.0` | JSON config files and JSON report output |
 | Available in `v0.3.0` | GitHub Actions annotation output |
 | Available in `v0.4.0` | Local timezone diagnostics |
-| Planned | Static date-risk scanning, fixed-date mode, and ecosystem adapters |
+| Available in `v0.5.0` | Static JS/TS date-risk scanning |
+| Planned | Fixed-date mode and ecosystem adapters |
+
+## Static Date-Risk Scan
+
+Scan a file or directory recursively. Generated output, dependencies, Git
+metadata, and coverage directories are skipped.
+
+```sh
+timewarp-ci scan src
+timewarp-ci scan src --json
+```
+
+The scanner flags system-clock access, string-based date parsing, and local-time
+getters/setters. Findings produce exit code `1`, making the command suitable for
+CI. This is a focused heuristic scan, not a full JavaScript parser, so review
+findings in context.
 
 ## GitHub Actions
 
@@ -211,6 +228,7 @@ Usage:
   timewarp-ci [--help]
   timewarp-ci --version
   timewarp-ci doctor [--json]
+  timewarp-ci scan [path] [--json]
   timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>
   timewarp-ci run [--config <path>]
 
@@ -218,13 +236,15 @@ Options:
   --help             Show this help message.
   --version          Show the installed version.
   doctor            Print local timezone diagnostics.
-  --json            Print doctor output as JSON.
+  scan              Find date and timezone risks in JS/TS source.
+  --json            Print doctor or scan output as JSON.
   -c, --config       Use a config file.
   --report           Output format: text, json, or github.
   -t, --timezone     Add a timezone to the run matrix.
 
 Examples:
   timewarp-ci doctor
+  timewarp-ci scan src
   timewarp-ci run -- npm test
   timewarp-ci run --config timewarp-ci.config.json
   timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test
@@ -253,6 +273,7 @@ Near-term milestones:
 - `v0.2.0`: config and reports
 - `v0.3.0`: GitHub Actions annotation output
 - `v0.4.0`: diagnostics
+- `v0.5.0`: JS/TS static date-risk scanner
 
 ## Limitations
 
