@@ -4,6 +4,11 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  formatScanJson,
+  formatScanText,
+  scanPath
+} from "./scanner.js";
 
 type PackageJson = {
   version: string;
@@ -19,6 +24,7 @@ type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "doctor"; reportFormat: DoctorReportFormat }
+  | { kind: "scan"; path: string; reportFormat: DoctorReportFormat }
   | {
       kind: "run";
       command?: string;
@@ -81,6 +87,7 @@ export function getHelpText(): string {
     "  timewarp-ci [--help]",
     "  timewarp-ci --version",
     "  timewarp-ci doctor [--json]",
+    "  timewarp-ci scan [path] [--json]",
     "  timewarp-ci run [--config <path>] [--report <format>] [--timezone <tz>] -- <command>",
     "  timewarp-ci run [--config <path>]",
     "",
@@ -88,13 +95,15 @@ export function getHelpText(): string {
     "  --help             Show this help message.",
     "  --version          Show the installed version.",
     "  doctor            Print local timezone diagnostics.",
-    "  --json            Print doctor output as JSON.",
+    "  scan              Find date and timezone risks in JS/TS source.",
+    "  --json            Print doctor or scan output as JSON.",
     "  -c, --config       Use a config file.",
     "  --report           Output format: text, json, or github.",
     "  -t, --timezone     Add a timezone to the run matrix.",
     "",
     "Examples:",
     "  timewarp-ci doctor",
+    "  timewarp-ci scan src",
     "  timewarp-ci run -- npm test",
     "  timewarp-ci run --config timewarp-ci.config.json",
     "  timewarp-ci run -t Etc/UTC -t Europe/Berlin -- npm test"
@@ -132,6 +141,34 @@ export function parseCliArgs(args: string[]): ParsedCommand {
     }
 
     return { kind: "doctor", reportFormat };
+  }
+
+  if (args[0] === "scan") {
+    let reportFormat: DoctorReportFormat = "text";
+    let path = ".";
+    let hasPath = false;
+
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index];
+
+      if (arg === "--json") {
+        reportFormat = "json";
+        continue;
+      }
+
+      if (arg.startsWith("-")) {
+        return { kind: "error", message: `Unknown scan option: ${arg}` };
+      }
+
+      if (hasPath) {
+        return { kind: "error", message: "Scan accepts at most one path." };
+      }
+
+      path = arg;
+      hasPath = true;
+    }
+
+    return { kind: "scan", path, reportFormat };
   }
 
   if (args[0] === "run") {
@@ -541,6 +578,25 @@ export async function runCli(
       stderr: "",
       exitCode: 0
     };
+  }
+
+  if (parsed.kind === "scan") {
+    try {
+      const findings = await scanPath(parsed.path);
+      const output =
+        parsed.reportFormat === "json"
+          ? formatScanJson(findings)
+          : formatScanText(findings);
+
+      return {
+        stdout: `${output}\n`,
+        stderr: "",
+        exitCode: findings.length > 0 ? 1 : 0
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { stdout: "", stderr: `Could not scan ${parsed.path}: ${message}\n`, exitCode: 1 };
+    }
   }
 
   if (parsed.kind === "error") {
